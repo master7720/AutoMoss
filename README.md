@@ -3,7 +3,7 @@
 This is my very first Rusherhack plugin, developed for the 2b2t group Conquest.
 It is a port of the Hybridious Meteor addon ported to work with the Rusherhack plugin system for Minecraft Java 1.21.4.
 
-Features
+# Features
 
 Automatic moss spreading 
 
