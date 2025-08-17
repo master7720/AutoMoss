@@ -1,0 +1,13 @@
+{
+  "Plugin-Class": "org.conquest.AutoMossPlugin",
+  "Name": "AutoMoss",
+  "Version": "1.0",
+  "Description": "RH plugin for conquest",
+  "URL": "",
+  "Authors": [
+    "mrlarper"
+  ],
+  "Minecraft-Versions": [
+    "1.21.4"
+  ]
+}
