@@ -1,12 +1,27 @@
-# - AutoMoss 
-- My very first Rusherhack Plugin I made for the 2b2t group Conquest.
-- Ported Hybridious Meteor addon to Rusherhacks system
+# Introduction
 
-# - TODO
-- Rotations Settings
-- Better logic
-- Better code practices
+This is my very first Rusherhack plugin, developed for the 2b2t group Conquest.
+It is a port of the Hybridious Meteor addon ported to work with the Rusherhack plugin system for Minecraft Java 1.21.4.
 
-# - Credits
-- Hybridious for the original code
-- John for Rusher 
+Features
+
+Automatic moss spreading 
+
+# TODO
+
+Add rotation settings
+
+Improve spreading logic
+
+Better code practices 
+
+# Issues & Pull Requests
+
+This plugin is in its early stages of development.
+If you encounter any bugs or issues please feel free to create an issue or create a pull request describing the problem. Any form contributions are highly appreciated.
+
+# Credits
+
+Hybridious – Original Meteor addon code
+
+John – Rusherhack framework and support
