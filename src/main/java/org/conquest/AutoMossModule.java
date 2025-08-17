@@ -19,24 +19,22 @@ import java.util.*;
 
 public class AutoMossModule extends ToggleableModule {
     private final NumberSetting<Double> range = new NumberSetting<>("Range", 4.5, 1.0, 6.0);
-    private final NumberSetting<Integer> mossSpreadCooldown = new NumberSetting<>("Moss Cooldown", 100, 20, 200);
+    private final NumberSetting<Integer> mossCooldown = new NumberSetting<>("Moss Cooldown", 100, 20, 200);
     private final BooleanSetting makeTrees = new BooleanSetting("Make Trees", true);
     private final BooleanSetting inventoryAllow = new BooleanSetting("Inventory Allow", true);
     private final NumberSetting<Integer> delay = new NumberSetting<>("Delay", 2, 0, 20);
     private final NumberSetting<Integer> maxUsesPerTick = new NumberSetting<>("Max Uses/Tick", 1, 1, 5);
 
-     int delayTimer = 0;
-     final Map<BlockPos, Integer> recentlyUsedMoss = new HashMap<>();
+    private int delayTimer = 0;
+    private final Map<BlockPos, Integer> recentlyUsedMoss = new HashMap<>();
 
     public AutoMossModule() {
         super("AutoMoss", "Automatically uses bone meal on moss and trees.", ModuleCategory.MISC);
-        this.registerSettings(this.range, this.mossSpreadCooldown, this.makeTrees, this.inventoryAllow, this.delay, this.maxUsesPerTick);
-
-
+        registerSettings(range, mossCooldown, makeTrees, inventoryAllow, delay, maxUsesPerTick);
     }
 
     @Subscribe(stage = Stage.ALL)
-public void tick(EventUpdate event) {
+    public void onTick(EventUpdate event) {
         if (mc.player == null || mc.level == null) return;
 
         if (delayTimer > 0) {
@@ -50,84 +48,51 @@ public void tick(EventUpdate event) {
         if (boneMealSlot == -1) return;
 
         int uses = 0;
-        for (BlockPos pos : findTargets()) {
-            if (uses >= maxUsesPerTick.getValue()) break;
-
-            BlockState state = mc.level.getBlockState(pos);
-            Block block = state.getBlock();
-            boolean isMoss = block.getDescriptionId().contains("moss_block");
-
-            if (isMoss && recentlyUsedMoss.containsKey(pos)) continue;
-
-            Vec3 hitPos = new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
-            BlockHitResult hit = new BlockHitResult(hitPos, Direction.UP, pos, false);
-
-            int prevSlot = mc.player.getInventory().selected;
-            mc.player.getInventory().selected = boneMealSlot;
-
-            mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
-
-            mc.player.getInventory().selected = prevSlot;
-
-            if (isMoss) {
-                recentlyUsedMoss.put(pos, mossSpreadCooldown.getValue());
-            }
-
-            uses++;
-            delayTimer = delay.getValue();
-        }
-    }
-
-    private void updateMossCooldowns() {
-        Iterator<Map.Entry<BlockPos, Integer>> it = recentlyUsedMoss.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<BlockPos, Integer> entry = it.next();
-            int cooldown = entry.getValue() - 1;
-            if (cooldown <= 0) it.remove();
-            else entry.setValue(cooldown);
-        }
-    }
-
-    private List<BlockPos> findTargets() {
-        List<BlockPos> targets = new ArrayList<>();
-        if (mc.player == null || mc.level == null) return targets;
-
-        double rangeSq = range.getValue() * range.getValue();
         BlockPos playerPos = mc.player.blockPosition();
+        double rangeSq = range.getValue() * range.getValue();
+        int r = (int) Math.ceil(range.getValue());
 
-        for (int x = (int) -range.getValue(); x <= range.getValue(); x++) {
-            for (int y = (int) -range.getValue(); y <= range.getValue(); y++) {
-                for (int z = (int) -range.getValue(); z <= range.getValue(); z++) {
+        outer:
+        for (int x = -r; x <= r; x++) {
+            for (int y = -r; y <= r; y++) {
+                for (int z = -r; z <= r; z++) {
                     BlockPos pos = playerPos.offset(x, y, z);
                     if (pos.distSqr(playerPos) > rangeSq) continue;
 
                     BlockState state = mc.level.getBlockState(pos);
                     String name = state.getBlock().getDescriptionId().toLowerCase();
 
-                    if (makeTrees.getValue()) {
-                        boolean isAzalea = name.contains("azalea") && !name.contains("tree");
-                        boolean isSapling = name.contains("sapling");
-                        if (isAzalea || isSapling) {
-                            targets.add(pos);
-                            continue;
-                        }
-                    }
+                    boolean isMoss = name.contains("moss_block");
+                    boolean isTreeTarget = makeTrees.getValue() && (name.contains("azalea") && !name.contains("tree") || name.contains("sapling"));
 
-                    if (name.contains("moss_block")) {
-                        targets.add(pos);
-                    }
+                    if (!isMoss && !isTreeTarget) continue;
+                    if (isMoss && recentlyUsedMoss.containsKey(pos)) continue;
+
+                    Vec3 hitPos = Vec3.atCenterOf(pos);
+                    BlockHitResult hit = new BlockHitResult(hitPos, Direction.UP, pos, false);
+
+                    int prevSlot = mc.player.getInventory().selected;
+                    mc.player.getInventory().selected = boneMealSlot;
+                    mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
+                    mc.player.getInventory().selected = prevSlot;
+
+                    if (isMoss) recentlyUsedMoss.put(pos, mossCooldown.getValue());
+
+                    uses++;
+                    delayTimer = delay.getValue();
+                    if (uses >= maxUsesPerTick.getValue()) break outer;
                 }
             }
         }
+    }
 
-        return targets;
+    private void updateMossCooldowns() {
+        recentlyUsedMoss.entrySet().removeIf(entry -> entry.setValue(entry.getValue() - 1) <= 0);
     }
 
     private int findBoneMealSlot() {
         for (int i = 0; i < 9; i++) {
-            if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) {
-                return i;
-            }
+            if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) return i;
         }
         return -1;
     }
