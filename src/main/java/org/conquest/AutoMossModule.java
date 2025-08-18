@@ -24,27 +24,66 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * AutoMossModule - A RusherHack module that automatically uses bone meal
+ * on moss blocks and valid spreadable blocks (stone, dirt, grass, etc.),
+ * replicating vanilla moss spreading behavior.
+ * Performance:
+ * - Uses a target block cache updated every few ticks (SCAN_INTERVAL).
+ * - Prevents repeatedly bonemealing the same moss block using a cooldown map.
+ */
 public class AutoMossModule extends ToggleableModule {
+
+    /** Maximum range (radius) in blocks to search for valid targets. */
     private final NumberSetting<Double> range = new NumberSetting<>("Range", 4.5, 1.0, 6.0);
+
+    /** Cooldown in ticks before bonemealing the same moss block again. */
     private final NumberSetting<Integer> mossCooldown = new NumberSetting<>("Moss Cooldown", 100, 20, 200);
+
+    /** Whether to allow bonemealing trees (azaleas, saplings, leaves). */
     private final BooleanSetting makeTrees = new BooleanSetting("Make Trees", true);
+
+    /** Whether bone meal can be taken from the full inventory (true) or hotbar only (false). */
     private final BooleanSetting inventoryAllow = new BooleanSetting("Inventory Allow", true);
+
+    /** Delay in ticks between bonemeal actions. */
     private final NumberSetting<Integer> delay = new NumberSetting<>("Delay", 2, 0, 20);
+
+    /** Maximum number of bonemeal actions per tick. */
     private final NumberSetting<Integer> maxUsesPerTick = new NumberSetting<>("Max Uses/Tick", 1, 1, 5);
+
+    /** Whether to rotate towards blocks before bonemealing. */
     private final BooleanSetting rotate = new BooleanSetting("Rotate", true);
 
+    /** Timer for global bonemeal delay. */
     private int delayTimer = 0;
+
+    /** Tracks moss blocks recently bonemealed, mapped to their cooldown. */
     private final Map<BlockPos, Integer> recentlyUsedMoss = new HashMap<>();
+
+    /** Cache of valid target block positions within range. */
     private final Set<BlockPos> targetBlocks = new HashSet<>();
 
+    /** Interval in ticks between rescanning blocks for valid targets. */
     private static final int SCAN_INTERVAL = 5;
+
+    /** Counter for when to rescan nearby blocks. */
     private int scanTimer = 0;
 
+    /**
+     * Creates the AutoMoss module with all settings registered.
+     */
     public AutoMossModule() {
         super("AutoMoss", "Automatically uses bone meal on moss and valid spreadable blocks.", ModuleCategory.MISC);
         registerSettings(range, mossCooldown, makeTrees, inventoryAllow, delay, maxUsesPerTick, rotate);
     }
 
+    /**
+     * Handles the main tick logic:
+     * - Finds bone meal slot.
+     * - Updates cooldowns and cached target blocks.
+     * - Attempts to bonemeal moss or spreadable blocks within range.
+     */
     @Subscribe(stage = Stage.ALL)
     public void onTick(EventUpdate event) {
         if (mc.player == null || mc.level == null) return;
@@ -59,6 +98,7 @@ public class AutoMossModule extends ToggleableModule {
 
         updateMossCooldowns();
 
+        // rescan targets every SCAN_INTERVAL ticks
         if (scanTimer-- <= 0) {
             updateTargetBlocks();
             scanTimer = SCAN_INTERVAL;
@@ -87,12 +127,16 @@ public class AutoMossModule extends ToggleableModule {
             Vec3 hitPos = Vec3.atCenterOf(pos);
             BlockHitResult hit = new BlockHitResult(hitPos, Direction.UP, pos, false);
 
+            // rotate to block before using bonemeal
+            // needs rewrite
             if (rotate.getValue()) {
                 RusherHackAPI.getRotationManager().updateRotation(pos);
                 BlockHitResult lookResult = RusherHackAPI.getRotationManager().getLookRaycast(pos);
                 if (lookResult == null || lookResult.getType() == BlockHitResult.Type.MISS) continue;
             }
 
+            // temporarily switch to bone meal slot
+            // better switch logic this is bs
             int prevSlot = mc.player.getInventory().selected;
             mc.player.getInventory().selected = boneMealSlot;
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
@@ -111,6 +155,9 @@ public class AutoMossModule extends ToggleableModule {
         }
     }
 
+    /**
+     * Updates the cache of valid target blocks around the player.
+     */
     private void updateTargetBlocks() {
         targetBlocks.clear();
         BlockPos playerPos = mc.player.blockPosition();
@@ -131,22 +178,36 @@ public class AutoMossModule extends ToggleableModule {
         }
     }
 
+    /**
+     * Checks if a block is a valid target for bonemealing.
+     * Includes moss itself and all blocks in the MOSS_REPLACEABLE tag.
+     */
     private boolean isValidTarget(Block block) {
         return block == Blocks.MOSS_BLOCK ||
                 block.defaultBlockState().is(BlockTags.MOSS_REPLACEABLE);
     }
 
+    /**
+     * Decrements cooldown timers for moss blocks and removes expired entries.
+     */
     private void updateMossCooldowns() {
         recentlyUsedMoss.replaceAll((pos, cooldown) -> cooldown - 1);
         recentlyUsedMoss.entrySet().removeIf(entry -> entry.getValue() <= 0);
     }
 
+    /**
+     * Finds the first inventory slot containing bone meal.
+     *
+     * @return the slot index, or -1 if none found
+     */
     private int findBoneMealSlot() {
         if (inventoryAllow.getValue()) {
+            // full inventory search
             for (int i = 0; i < mc.player.getInventory().items.size(); i++) {
                 if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) return i;
             }
         } else {
+            // hotbar only
             for (int i = 0; i < 9; i++) {
                 if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) return i;
             }
