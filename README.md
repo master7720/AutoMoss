@@ -19,8 +19,6 @@ Option to allow bone meal from inventory or hotbar only.
 
 Just force Crosby to do everything.
 
-Improve rotations 
-
 Better code practices 
 
 # Issues & Pull Requests
