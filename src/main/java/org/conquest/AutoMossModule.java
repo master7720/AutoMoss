@@ -2,6 +2,7 @@ package org.conquest;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BoneMealItem;
 import net.minecraft.world.level.block.Block;
@@ -36,8 +37,11 @@ public class AutoMossModule extends ToggleableModule {
     private final Map<BlockPos, Integer> recentlyUsedMoss = new HashMap<>();
     private final Set<BlockPos> targetBlocks = new HashSet<>();
 
+    private static final int SCAN_INTERVAL = 5;
+    private int scanTimer = 0;
+
     public AutoMossModule() {
-        super("AutoMoss", "Automatically uses bone meal on moss, dirt, saplings, and trees.", ModuleCategory.MISC);
+        super("AutoMoss", "Automatically uses bone meal on moss and valid spreadable blocks.", ModuleCategory.MISC);
         registerSettings(range, mossCooldown, makeTrees, inventoryAllow, delay, maxUsesPerTick, rotate);
     }
 
@@ -54,7 +58,11 @@ public class AutoMossModule extends ToggleableModule {
         if (boneMealSlot == -1) return;
 
         updateMossCooldowns();
-        updateTargetBlocks();
+
+        if (scanTimer-- <= 0) {
+            updateTargetBlocks();
+            scanTimer = SCAN_INTERVAL;
+        }
 
         int uses = 0;
         BlockPos playerPos = mc.player.blockPosition();
@@ -64,11 +72,14 @@ public class AutoMossModule extends ToggleableModule {
             if (pos.distSqr(playerPos) > rangeSq) continue;
 
             BlockState state = mc.level.getBlockState(pos);
-            String name = state.getBlock().getDescriptionId().toLowerCase();
+            Block block = state.getBlock();
 
-            boolean isMoss = name.contains("moss_block");
-            boolean isTreeTarget = makeTrees.getValue() &&
-                    ((name.contains("azalea") && !name.contains("tree")) || name.contains("sapling") || name.contains("leaves"));
+            boolean isMoss = block == Blocks.MOSS_BLOCK;
+            boolean isTreeTarget = makeTrees.getValue() && (
+                    block == Blocks.AZALEA ||
+                            block.getDescriptionId().toLowerCase().contains("sapling") ||
+                            block.getDescriptionId().toLowerCase().contains("leaves")
+            );
 
             if (!isMoss && !isTreeTarget) continue;
             if (isMoss && recentlyUsedMoss.containsKey(pos)) continue;
@@ -87,11 +98,16 @@ public class AutoMossModule extends ToggleableModule {
             mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
             mc.player.getInventory().selected = prevSlot;
 
-            if (isMoss) recentlyUsedMoss.put(pos, mossCooldown.getValue());
+            if (isMoss) {
+                recentlyUsedMoss.put(pos, mossCooldown.getValue());
+            }
 
             uses++;
-            delayTimer = delay.getValue();
             if (uses >= maxUsesPerTick.getValue()) break;
+        }
+
+        if (uses > 0) {
+            delayTimer = delay.getValue();
         }
     }
 
@@ -117,26 +133,23 @@ public class AutoMossModule extends ToggleableModule {
 
     private boolean isValidTarget(Block block) {
         return block == Blocks.MOSS_BLOCK ||
-                block == Blocks.DIRT ||
-                block == Blocks.GRASS_BLOCK ||
-                block == Blocks.PODZOL ||
-                block == Blocks.MYCELIUM ||
-                block == Blocks.AZALEA ||
-                block == Blocks.SPRUCE_SAPLING ||
-                block == Blocks.OAK_SAPLING ||
-                block == Blocks.BIRCH_SAPLING ||
-                block == Blocks.JUNGLE_SAPLING ||
-                block == Blocks.ACACIA_SAPLING ||
-                block == Blocks.DARK_OAK_SAPLING;
+                block.defaultBlockState().is(BlockTags.MOSS_REPLACEABLE);
     }
 
     private void updateMossCooldowns() {
-        recentlyUsedMoss.entrySet().removeIf(entry -> entry.setValue(entry.getValue() - 1) <= 0);
+        recentlyUsedMoss.replaceAll((pos, cooldown) -> cooldown - 1);
+        recentlyUsedMoss.entrySet().removeIf(entry -> entry.getValue() <= 0);
     }
 
     private int findBoneMealSlot() {
-        for (int i = 0; i < 9; i++) {
-            if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) return i;
+        if (inventoryAllow.getValue()) {
+            for (int i = 0; i < mc.player.getInventory().items.size(); i++) {
+                if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) return i;
+            }
+        } else {
+            for (int i = 0; i < 9; i++) {
+                if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) return i;
+            }
         }
         return -1;
     }
