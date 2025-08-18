@@ -6,6 +6,10 @@ It is a port of the Hybridious Meteor addon ported to work with the Rusherhack p
 # Features
 
 Automatic moss spreading 
+Configurable range, cooldown, delay, and max uses per tick.
+Optional rotation to face target blocks.
+Optional tree growth support (azaleas, saplings, leaves).
+Option to allow bone meal from inventory or hotbar only.
 
 # TODO
 
