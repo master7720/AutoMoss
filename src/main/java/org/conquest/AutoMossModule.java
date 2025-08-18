@@ -1,20 +1,18 @@
 package org.conquest;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BoneMealItem;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
 import org.rusherhack.client.api.RusherHackAPI;
 import org.rusherhack.client.api.events.client.EventUpdate;
 import org.rusherhack.client.api.feature.module.ModuleCategory;
 import org.rusherhack.client.api.feature.module.ToggleableModule;
-import org.rusherhack.core.event.stage.Stage;
 import org.rusherhack.core.event.subscribe.Subscribe;
 import org.rusherhack.core.setting.BooleanSetting;
 import org.rusherhack.core.setting.NumberSetting;
@@ -34,48 +32,37 @@ import java.util.Set;
  */
 public class AutoMossModule extends ToggleableModule {
 
+    /**
+     * Interval in ticks between rescanning blocks for valid targets.
+     */
+    private static final int SCAN_INTERVAL = 5;
     /** Maximum range (radius) in blocks to search for valid targets. */
     private final NumberSetting<Double> range = new NumberSetting<>("Range", 4.5, 1.0, 6.0);
-
     /** Cooldown in ticks before bonemealing the same moss block again. */
     private final NumberSetting<Integer> mossCooldown = new NumberSetting<>("Moss Cooldown", 100, 20, 200);
-
     /** Whether to allow bonemealing trees (azaleas, saplings, leaves). */
     private final BooleanSetting makeTrees = new BooleanSetting("Make Trees", true);
-
-    /** Whether bone meal can be taken from the full inventory (true) or hotbar only (false). */
-    private final BooleanSetting inventoryAllow = new BooleanSetting("Inventory Allow", true);
-
     /** Delay in ticks between bonemeal actions. */
     private final NumberSetting<Integer> delay = new NumberSetting<>("Delay", 2, 0, 20);
-
     /** Maximum number of bonemeal actions per tick. */
     private final NumberSetting<Integer> maxUsesPerTick = new NumberSetting<>("Max Uses/Tick", 1, 1, 5);
-
     /** Whether to rotate towards blocks before bonemealing. */
     private final BooleanSetting rotate = new BooleanSetting("Rotate", true);
 
-    /** Timer for global bonemeal delay. */
-    private int delayTimer = 0;
-
     /** Tracks moss blocks recently bonemealed, mapped to their cooldown. */
     private final Map<BlockPos, Integer> recentlyUsedMoss = new HashMap<>();
-
     /** Cache of valid target block positions within range. */
     private final Set<BlockPos> targetBlocks = new HashSet<>();
-
-    /** Interval in ticks between rescanning blocks for valid targets. */
-    private static final int SCAN_INTERVAL = 5;
-
+    /**
+     * Timer for global bonemeal delay.
+     */
+    private int delayTimer = 0;
     /** Counter for when to rescan nearby blocks. */
     private int scanTimer = 0;
 
-    /**
-     * Creates the AutoMoss module with all settings registered.
-     */
     public AutoMossModule() {
         super("AutoMoss", "Automatically uses bone meal on moss and valid spreadable blocks.", ModuleCategory.MISC);
-        registerSettings(range, mossCooldown, makeTrees, inventoryAllow, delay, maxUsesPerTick, rotate);
+        registerSettings(range, mossCooldown, makeTrees, delay, maxUsesPerTick, rotate);
     }
 
     /**
@@ -84,7 +71,7 @@ public class AutoMossModule extends ToggleableModule {
      * - Updates cooldowns and cached target blocks.
      * - Attempts to bonemeal moss or spreadable blocks within range.
      */
-    @Subscribe(stage = Stage.ALL)
+    @Subscribe
     public void onTick(EventUpdate event) {
         if (mc.player == null || mc.level == null) return;
 
@@ -93,11 +80,7 @@ public class AutoMossModule extends ToggleableModule {
             return;
         }
 
-        int boneMealSlot = findBoneMealSlot();
-        if (boneMealSlot == -1) return;
-
         updateMossCooldowns();
-
         // rescan targets every SCAN_INTERVAL ticks
         if (scanTimer-- <= 0) {
             updateTargetBlocks();
@@ -124,35 +107,36 @@ public class AutoMossModule extends ToggleableModule {
             if (!isMoss && !isTreeTarget) continue;
             if (isMoss && recentlyUsedMoss.containsKey(pos)) continue;
 
-            Vec3 hitPos = Vec3.atCenterOf(pos);
-            BlockHitResult hit = new BlockHitResult(hitPos, Direction.UP, pos, false);
+            // check if player is holding bonemeal in hand
+            ItemStack main = mc.player.getMainHandItem();
+            ItemStack off = mc.player.getOffhandItem();
+            boolean holdingBoneMeal = main.getItem() instanceof BoneMealItem || off.getItem() instanceof BoneMealItem;
 
             // rotate to block before using bonemeal
-            // needs rewrite
-            if (rotate.getValue()) {
+            if (rotate.getValue() && holdingBoneMeal) {
                 RusherHackAPI.getRotationManager().updateRotation(pos);
                 BlockHitResult lookResult = RusherHackAPI.getRotationManager().getLookRaycast(pos);
                 if (lookResult == null || lookResult.getType() == BlockHitResult.Type.MISS) continue;
             }
 
-            // temporarily switch to bone meal slot
-            // better switch logic this is bs
-            int prevSlot = mc.player.getInventory().selected;
-            mc.player.getInventory().selected = boneMealSlot;
-            mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
-            mc.player.getInventory().selected = prevSlot;
-
-            if (isMoss) {
-                recentlyUsedMoss.put(pos, mossCooldown.getValue());
+            // handles bonemeal is hand
+            boolean placed = false;
+            if (main.getItem() instanceof BoneMealItem) {
+                RusherHackAPI.interactions().useBlock(pos, InteractionHand.MAIN_HAND, true, true);
+                placed = true;
+            } else if (off.getItem() instanceof BoneMealItem) {
+                RusherHackAPI.interactions().useBlock(pos, InteractionHand.OFF_HAND, true, true);
+                placed = true;
             }
 
-            uses++;
-            if (uses >= maxUsesPerTick.getValue()) break;
+            if (placed) {
+                if (isMoss) recentlyUsedMoss.put(pos, mossCooldown.getValue());
+                uses++;
+                if (uses >= maxUsesPerTick.getValue()) break;
+            }
         }
 
-        if (uses > 0) {
-            delayTimer = delay.getValue();
-        }
+        if (uses > 0) delayTimer = delay.getValue();
     }
 
     /**
@@ -170,9 +154,7 @@ public class AutoMossModule extends ToggleableModule {
                     BlockState state = mc.level.getBlockState(pos);
                     Block block = state.getBlock();
 
-                    if (isValidTarget(block)) {
-                        targetBlocks.add(pos);
-                    }
+                    if (isValidTarget(block)) targetBlocks.add(pos);
                 }
             }
         }
@@ -183,8 +165,7 @@ public class AutoMossModule extends ToggleableModule {
      * Includes moss itself and all blocks in the MOSS_REPLACEABLE tag.
      */
     private boolean isValidTarget(Block block) {
-        return block == Blocks.MOSS_BLOCK ||
-                block.defaultBlockState().is(BlockTags.MOSS_REPLACEABLE);
+        return block == Blocks.MOSS_BLOCK || block.defaultBlockState().is(BlockTags.MOSS_REPLACEABLE);
     }
 
     /**
@@ -193,25 +174,5 @@ public class AutoMossModule extends ToggleableModule {
     private void updateMossCooldowns() {
         recentlyUsedMoss.replaceAll((pos, cooldown) -> cooldown - 1);
         recentlyUsedMoss.entrySet().removeIf(entry -> entry.getValue() <= 0);
-    }
-
-    /**
-     * Finds the first inventory slot containing bone meal.
-     *
-     * @return the slot index, or -1 if none found
-     */
-    private int findBoneMealSlot() {
-        if (inventoryAllow.getValue()) {
-            // full inventory search
-            for (int i = 0; i < mc.player.getInventory().items.size(); i++) {
-                if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) return i;
-            }
-        } else {
-            // hotbar only
-            for (int i = 0; i < 9; i++) {
-                if (mc.player.getInventory().getItem(i).getItem() instanceof BoneMealItem) return i;
-            }
-        }
-        return -1;
     }
 }
