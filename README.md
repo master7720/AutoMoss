@@ -9,8 +9,6 @@ Automatic moss spreading
 
 # TODO
 
-Add rotation settings
-
 Improve spreading logic
 
 Better code practices 
