@@ -9,6 +9,8 @@ Automatic moss spreading
 
 # TODO
 
+Just force Crosby to do everything.
+
 Improve rotations 
 
 Better code practices 
