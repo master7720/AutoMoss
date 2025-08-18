@@ -9,7 +9,7 @@ Automatic moss spreading
 
 # TODO
 
-Improve spreading logic
+Improve rotations 
 
 Better code practices 
 
