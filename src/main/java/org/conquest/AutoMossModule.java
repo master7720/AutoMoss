@@ -4,6 +4,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BoneMealItem;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -17,7 +19,9 @@ import org.rusherhack.core.setting.BooleanSetting;
 import org.rusherhack.core.setting.NumberSetting;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class AutoMossModule extends ToggleableModule {
     private final NumberSetting<Double> range = new NumberSetting<>("Range", 4.5, 1.0, 6.0);
@@ -30,9 +34,10 @@ public class AutoMossModule extends ToggleableModule {
 
     private int delayTimer = 0;
     private final Map<BlockPos, Integer> recentlyUsedMoss = new HashMap<>();
+    private final Set<BlockPos> targetBlocks = new HashSet<>();
 
     public AutoMossModule() {
-        super("AutoMoss", "Automatically uses bone meal on moss and trees.", ModuleCategory.MISC);
+        super("AutoMoss", "Automatically uses bone meal on moss, dirt, saplings, and trees.", ModuleCategory.MISC);
         registerSettings(range, mossCooldown, makeTrees, inventoryAllow, delay, maxUsesPerTick, rotate);
     }
 
@@ -45,53 +50,84 @@ public class AutoMossModule extends ToggleableModule {
             return;
         }
 
-        updateMossCooldowns();
-
         int boneMealSlot = findBoneMealSlot();
         if (boneMealSlot == -1) return;
+
+        updateMossCooldowns();
+        updateTargetBlocks();
 
         int uses = 0;
         BlockPos playerPos = mc.player.blockPosition();
         double rangeSq = range.getValue() * range.getValue();
+
+        for (BlockPos pos : targetBlocks) {
+            if (pos.distSqr(playerPos) > rangeSq) continue;
+
+            BlockState state = mc.level.getBlockState(pos);
+            String name = state.getBlock().getDescriptionId().toLowerCase();
+
+            boolean isMoss = name.contains("moss_block");
+            boolean isTreeTarget = makeTrees.getValue() &&
+                    ((name.contains("azalea") && !name.contains("tree")) || name.contains("sapling") || name.contains("leaves"));
+
+            if (!isMoss && !isTreeTarget) continue;
+            if (isMoss && recentlyUsedMoss.containsKey(pos)) continue;
+
+            Vec3 hitPos = Vec3.atCenterOf(pos);
+            BlockHitResult hit = new BlockHitResult(hitPos, Direction.UP, pos, false);
+
+            if (rotate.getValue()) {
+                RusherHackAPI.getRotationManager().updateRotation(pos);
+                BlockHitResult lookResult = RusherHackAPI.getRotationManager().getLookRaycast(pos);
+                if (lookResult == null || lookResult.getType() == BlockHitResult.Type.MISS) continue;
+            }
+
+            int prevSlot = mc.player.getInventory().selected;
+            mc.player.getInventory().selected = boneMealSlot;
+            mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
+            mc.player.getInventory().selected = prevSlot;
+
+            if (isMoss) recentlyUsedMoss.put(pos, mossCooldown.getValue());
+
+            uses++;
+            delayTimer = delay.getValue();
+            if (uses >= maxUsesPerTick.getValue()) break;
+        }
+    }
+
+    private void updateTargetBlocks() {
+        targetBlocks.clear();
+        BlockPos playerPos = mc.player.blockPosition();
         int r = (int) Math.ceil(range.getValue());
 
-        outer:
         for (int x = -r; x <= r; x++) {
             for (int y = -r; y <= r; y++) {
                 for (int z = -r; z <= r; z++) {
                     BlockPos pos = playerPos.offset(x, y, z);
-                    if (pos.distSqr(playerPos) > rangeSq) continue;
-
                     BlockState state = mc.level.getBlockState(pos);
-                    String name = state.getBlock().getDescriptionId().toLowerCase();
+                    Block block = state.getBlock();
 
-                    boolean isMoss = name.contains("moss_block");
-                    boolean isTreeTarget = makeTrees.getValue() &&
-                            ((name.contains("azalea") && !name.contains("tree")) || name.contains("sapling"));
-
-                    if (!isMoss && !isTreeTarget) continue;
-                    if (isMoss && recentlyUsedMoss.containsKey(pos)) continue;
-
-                    Vec3 hitPos = Vec3.atCenterOf(pos);
-                    BlockHitResult hit = new BlockHitResult(hitPos, Direction.UP, pos, false);
-
-                    if (rotate.getValue()) {
-                        RusherHackAPI.getRotationManager().updateRotation(pos);
+                    if (isValidTarget(block)) {
+                        targetBlocks.add(pos);
                     }
-
-                    int prevSlot = mc.player.getInventory().selected;
-                    mc.player.getInventory().selected = boneMealSlot;
-                    mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
-                    mc.player.getInventory().selected = prevSlot;
-
-                    if (isMoss) recentlyUsedMoss.put(pos, mossCooldown.getValue());
-
-                    uses++;
-                    delayTimer = delay.getValue();
-                    if (uses >= maxUsesPerTick.getValue()) break outer;
                 }
             }
         }
+    }
+
+    private boolean isValidTarget(Block block) {
+        return block == Blocks.MOSS_BLOCK ||
+                block == Blocks.DIRT ||
+                block == Blocks.GRASS_BLOCK ||
+                block == Blocks.PODZOL ||
+                block == Blocks.MYCELIUM ||
+                block == Blocks.AZALEA ||
+                block == Blocks.SPRUCE_SAPLING ||
+                block == Blocks.OAK_SAPLING ||
+                block == Blocks.BIRCH_SAPLING ||
+                block == Blocks.JUNGLE_SAPLING ||
+                block == Blocks.ACACIA_SAPLING ||
+                block == Blocks.DARK_OAK_SAPLING;
     }
 
     private void updateMossCooldowns() {
