@@ -3,7 +3,7 @@ package org.conquest;
 import org.rusherhack.client.api.RusherHackAPI;
 import org.rusherhack.client.api.plugin.Plugin;
 
-public class AutoMossPlugin extends org.rusherhack.client.api.plugin.Plugin {
+public class AutoMossPlugin extends Plugin {
 
     @Override
     public void onLoad() {
