@@ -1,7 +1,7 @@
 {
   "Plugin-Class": "org.conquest.AutoMossPlugin",
   "Name": "AutoMoss",
-  "Version": "2.0",
+  "Version": "2.1",
   "Description": "RH plugin for conquest",
   "URL": "",
   "Authors": [
