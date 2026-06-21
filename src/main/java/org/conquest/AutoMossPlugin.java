@@ -1,5 +1,6 @@
 package org.conquest;
 
+import org.conquest.module.AutoMossModule;
 import org.rusherhack.client.api.RusherHackAPI;
 import org.rusherhack.client.api.plugin.Plugin;
 
@@ -15,5 +16,4 @@ public class AutoMossPlugin extends Plugin {
     public void onUnload() {
         this.getLogger().info("AutoMoss has unloaded!");
     }
-
 }
